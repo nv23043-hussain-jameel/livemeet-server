@@ -19,10 +19,14 @@ io.on('connection', (socket) => {
     rooms[roomCode].push(socket.id);
   });
 
-  socket.on('send-subtitle', ({ roomCode, text, lang }) => {
-    socket.to(roomCode).emit('receive-subtitle', { text, lang });
+  socket.on('send-original', ({ roomCode, text, name }) => {
+    socket.to(roomCode).emit('receive-original', { text, name });
   });
 });
+
+setInterval(() => {
+  console.log('keeping server alive...');
+}, 1000 * 60 * 5);
 
 server.listen(3000, () => {
   console.log('Server running on port 3000');
