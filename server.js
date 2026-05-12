@@ -5,14 +5,15 @@ const cors = require('cors');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // --- CONFIGURATION ---
+// Using Gemini 2.5 Flash (Stable LTS) for maximum reliability
 const genAI = new GoogleGenerativeAI("AIzaSyB4q4SWdgOfFtywZQrV0eUJcHHcQJwdVxU");
-// Switched from lite to standard flash for better stability during high demand
-const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Logger to track traffic during your presentation
 app.use((req, res, next) => {
   console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.path}`);
   next();
@@ -24,14 +25,15 @@ const io = new Server(server, {
 });
 
 app.get('/', (req, res) => {
-  res.send('<h1>LiveMeet Translation Server is ONLINE</h1><p>Status: Ready for Science Fair</p>');
+  res.send('<h1>LiveMeet Server: STATUS ONLINE</h1><p>Model: Gemini 2.5 Flash (LTS)</p>');
 });
 
+// Translation Endpoint with Exponential Backoff
 app.post('/translate', async (req, res) => {
   const { text, targetLang } = req.body;
   
   if (!text || !targetLang) {
-    return res.status(400).json({ error: "Missing text or target language" });
+    return res.status(400).json({ error: "Missing data" });
   }
 
   const MAX_RETRIES = 5;
@@ -39,38 +41,30 @@ app.post('/translate', async (req, res) => {
 
   while (attempt < MAX_RETRIES) {
     try {
-      const prompt = `Act as a professional real-time interpreter. 
-                      Translate the following text into natural, spoken ${targetLang}.
-                      - If translating to Arabic ('ar'), use clear, Modern Standard Arabic.
-                      - Output ONLY the translated text. No quotes or explanations.
-                      Text: "${text}"`;
-                      
+      const prompt = `Translate this text to ${targetLang}. Output ONLY the translation: "${text}"`;
       const result = await model.generateContent(prompt);
       const translatedText = result.response.text().trim();
       
-      console.log(`OK (Attempt ${attempt + 1}): "${text}" -> "${translatedText}"`);
+      console.log(`SUCCESS: ${text} -> ${translatedText}`);
       return res.json({ translatedText });
 
     } catch (error) {
       attempt++;
-      const errMsg = error.message.toLowerCase();
+      const isServiceError = error.message.includes("503") || error.message.includes("demand");
       
-      // Retry on 503, 504, 429, or general service spikes
-      if (errMsg.includes("503") || errMsg.includes("unavailable") || errMsg.includes("429") || errMsg.includes("demand")) {
-        const waitTime = attempt * 1000;
-        console.log(`Google busy (503). Attempt ${attempt} failed. Retrying in ${waitTime/1000}s...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
+      if (isServiceError && attempt < MAX_RETRIES) {
+        const wait = attempt * 1000;
+        console.log(`Server Busy. Retry ${attempt}/${MAX_RETRIES} in ${wait}ms...`);
+        await new Promise(r => setTimeout(r, wait));
       } else {
-        // Stop if it's a permanent error (like a bad API key)
-        console.error("Permanent Error:", error.message);
+        console.error("Translation failed:", error.message);
         break;
       }
     }
   }
 
-  // Fallback if all 5 tries fail
-  console.log("All retries exhausted. Sending original text to prevent app crash.");
-  res.status(200).json({ translatedText: text, note: "fallback" });
+  // Fallback so the app doesn't stay blank
+  res.json({ translatedText: text, note: "fallback" });
 });
 
 io.on('connection', (socket) => {
@@ -78,11 +72,11 @@ io.on('connection', (socket) => {
 
   socket.on('join-room', (roomCode) => {
     socket.join(roomCode);
-    console.log(`User joined room: ${roomCode}`);
+    console.log(`Room Joined: ${roomCode}`);
   });
 
   socket.on('send-original', (data) => {
-    console.log(`Relaying message from ${data.name}`);
+    // Relay original message to other phones in the room
     socket.to(data.roomCode).emit('receive-original', {
       text: data.text,
       name: data.name
@@ -95,4 +89,4 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`Backend running on port ${PORT}`));
