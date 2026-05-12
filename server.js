@@ -6,7 +6,7 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // --- CONFIGURATION ---
 // Updated to Gemini 3.1 Flash-Lite (Stable GA May 2026)
-const genAI = new GoogleGenerativeAI("AIzaSyCG9pJXTzWiAItsfkp1jkTAJb6ymOuM_xo");
+const genAI = new GoogleGenerativeAI("AIzaSyB4q4SWdgOfFtywZQrV0eUJcHHcQJwdVxU");
 const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
 
 const app = express();
