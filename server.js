@@ -26,7 +26,6 @@ app.get('/', (req, res) => {
   res.send('<h1>LiveMeet Translation Server is ONLINE</h1><p>Powered by Gemini 3.1 Flash-Lite</p>');
 });
 
-// Endpoint for translation with RETRY LOGIC for 503 errors
 app.post('/translate', async (req, res) => {
   const { text, targetLang } = req.body;
   
@@ -34,14 +33,19 @@ app.post('/translate', async (req, res) => {
     return res.status(400).json({ error: "Missing text or target language" });
   }
 
-  const MAX_RETRIES = 3;
+  // Increased retries to 5 for better reliability during high demand
+  const MAX_RETRIES = 5;
   let attempt = 0;
 
   while (attempt < MAX_RETRIES) {
     try {
-      const prompt = `Task: Translate the following text into the language with ISO code "${targetLang}". 
-                      Constraint: Output ONLY the translated text. Do not include quotes or explanations.
-                      Text: "${text}"`;
+      // UPGRADED PROMPT: Tells the AI to act as a professional interpreter
+      const prompt = `Act as a professional real-time interpreter. 
+                      Translate the following text into natural, spoken ${targetLang}.
+                      - If translating to Arabic ('ar'), use clear, Modern Standard Arabic.
+                      - Maintain the original tone and meaning.
+                      - Output ONLY the translated text. No quotes, labels, or explanations.
+                      Text to translate: "${text}"`;
                       
       const result = await model.generateContent(prompt);
       const translatedText = result.response.text().trim();
@@ -51,20 +55,21 @@ app.post('/translate', async (req, res) => {
 
     } catch (error) {
       attempt++;
+      const errMsg = error.message.toLowerCase();
       console.error(`Attempt ${attempt} failed:`, error.message);
 
-      // If it's a 503 (High Demand) error, wait 1.5 seconds and try again
-      if (error.message.includes("503") || error.message.includes("Service Unavailable") || error.message.includes("high demand")) {
-        console.log("Server busy, retrying in 1.5s...");
-        await new Promise(resolve => setTimeout(resolve, 1500));
+      // Retry on 503, 504, 429 (Rate Limit), or Service Unavailable
+      if (errMsg.includes("503") || errMsg.includes("unavailable") || errMsg.includes("429") || errMsg.includes("demand")) {
+        // Wait longer each time (Exponential Backoff: 1s, 2s, 3s...)
+        const waitTime = attempt * 1000;
+        console.log(`Retrying in ${waitTime/1000}s...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
       } else {
-        // If it's a 403 or 400 (logic error), stop retrying
         break;
       }
     }
   }
 
-  // Final Fallback: If all retries fail, we send the original text so the app doesn't crash
   console.log("All retries exhausted. Sending original text.");
   res.status(200).json({ translatedText: text, note: "fallback" });
 });
