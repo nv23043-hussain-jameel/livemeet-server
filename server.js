@@ -5,16 +5,17 @@ const cors = require('cors');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // --- CONFIGURATION ---
+// Updated to Gemini 3.1 Flash-Lite (Stable GA May 2026)
 const genAI = new GoogleGenerativeAI("AIzaSyCG9pJXTzWiAItsfkp1jkTAJb6ymOuM_xo");
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// This helps us see if the phone is actually hitting the server
+// Incoming Request Logger
 app.use((req, res, next) => {
-  console.log(`INCOMING REQUEST: ${req.method} ${req.path}`);
+  console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.path}`);
   next();
 });
 
@@ -25,7 +26,7 @@ const io = new Server(server, {
 
 // TEST ROUTE
 app.get('/', (req, res) => {
-  res.send('<h1>LiveMeet Translation Server is ONLINE</h1>');
+  res.send('<h1>LiveMeet Translation Server is ONLINE</h1><p>Powered by Gemini 3.1 Flash-Lite</p>');
 });
 
 // Endpoint for translation
@@ -37,14 +38,15 @@ app.post('/translate', async (req, res) => {
   }
 
   try {
-    const prompt = `Translate the following text into the language with ISO code "${targetLang}". 
-                    Only return the translated text. Do not include quotes or explanations.
+    // SYSTEM PROMPT: Forces the model to only return the translated string.
+    const prompt = `Task: Translate the following text into the language with ISO code "${targetLang}". 
+                    Constraint: Output ONLY the translated text. Do not include quotes, explanations, or labels.
                     Text: "${text}"`;
                     
     const result = await model.generateContent(prompt);
     const translatedText = result.response.text().trim();
     
-    console.log(`Successfully translated: "${text}" to "${translatedText}" [Target: ${targetLang}]`);
+    console.log(`OK: "${text}" -> "${translatedText}" [${targetLang}]`);
     res.json({ translatedText });
   } catch (error) {
     console.error("Gemini API Error:", error);
@@ -61,7 +63,8 @@ io.on('connection', (socket) => {
   });
 
   socket.on('send-original', (data) => {
-    console.log(`Message from ${data.name} in room ${data.roomCode}: ${data.text}`);
+    console.log(`Relaying message from ${data.name} in room ${data.roomCode}`);
+    // Broadcast to everyone ELSE in the room
     socket.to(data.roomCode).emit('receive-original', {
       text: data.text,
       name: data.name
